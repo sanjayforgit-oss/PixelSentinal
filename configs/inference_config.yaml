@@ -1,0 +1,9 @@
+# Inference Configuration
+inference:
+  model_path: models/checkpoints/best_model.pth
+  batch_size: 16
+  num_workers: 4
+  device: cuda
+  confidence_threshold: 0.5
+  nms_threshold: 0.5
+  output_format: tiff

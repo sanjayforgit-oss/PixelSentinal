@@ -1,0 +1,23 @@
+# Model Configurations
+models:
+  enhancement:
+    name: SwinIR
+    pretrained: true
+    input_channels: 1
+    output_channels: 1
+    
+  colorization:
+    name: Pix2Pix
+    pretrained: true
+    input_channels: 1
+    output_channels: 3
+    
+  segmentation:
+    name: SegFormer
+    pretrained: true
+    num_classes: 10
+    
+  detection:
+    name: YOLOv11
+    pretrained: true
+    num_classes: 80

@@ -1,0 +1,26 @@
+# Main Configuration
+project: PixelSentinel
+version: 1.0.0
+
+dataset:
+  sources:
+    - landsat8
+    - landsat9
+    - sentinel2
+  raw_path: datasets/raw
+  processed_path: datasets/processed
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+
+training:
+  epochs: 100
+  batch_size: 32
+  learning_rate: 0.0001
+  optimizer: adam
+  device: cuda
+
+inference:
+  batch_size: 16
+  device: cuda
+  num_workers: 4

@@ -1,0 +1,27 @@
+name: pixelsentinel
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pytorch::pytorch::pytorch=*=cuda11*
+  - pytorch::pytorch::torchvision
+  - pytorch::pytorch::torchaudio
+  - pytorch::pytorch::pytorch-cuda=11.8
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - scikit-image
+  - scikit-learn
+  - opencv
+  - pip
+  - pip:
+    - fastapi
+    - uvicorn
+    - streamlit
+    - pydantic
+    - pyyaml
+    - tqdm
+    - python-dotenv
+    - loguru

@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./datasets:/app/datasets
+      - ./models:/app/models
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/pixelsentinel
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    image: streamlit:latest
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend:/app
+      - ./datasets:/app/datasets
+    working_dir: /app
+    command: streamlit run streamlit_app.py
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=pixelsentinel
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:

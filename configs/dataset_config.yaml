@@ -1,0 +1,15 @@
+# Dataset Configuration
+dataset:
+  landsat8:
+    bands: [1, 2, 3, 4, 5, 6, 7, 8]
+    resolution: 30
+  landsat9:
+    bands: [1, 2, 3, 4, 5, 6, 7, 8]
+    resolution: 30
+  sentinel2:
+    bands: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    resolution: 10
+  preprocessing:
+    normalize: true
+    augment: true
+    tile_size: 256
