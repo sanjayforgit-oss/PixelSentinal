@@ -25,3 +25,22 @@ See [setup.md](docs/setup.md) for detailed installation instructions.
 - [API Reference](docs/api.md)
 - [Setup Guide](docs/setup.md)
 - [References](docs/references.md)
+
+
+#####################################################
+# Create virtual environment
+python -m venv .venv
+
+# Activate
+
+# Windows
+.venv\Scripts\activate
+
+# Linux / macOS
+source .venv/bin/activate
+
+# Upgrade pip
+python -m pip install --upgrade pip
+
+# Install dependencies
+pip install -r requirements.txt
