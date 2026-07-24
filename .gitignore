@@ -1,0 +1,11 @@
+# Ignore the virtual environment
+.venv/
+
+# Ignore heavy datasets
+datasets/raw/
+datasets/processed/
+datasets/tiles/
+
+# Ignore heavy AI weights
+models/checkpoints/
+models/pretrained/
