@@ -1,27 +1,10 @@
-
-
 """
 PixelSentinel Collection Manager
 
-Automatically collects the remaining dataset batches.
+NEW Dataset Collection
+Unique ROIs not included in the original dataset.
 
-Already Downloaded
-------------------
-✓ Urban (2023-2026)
-✓ Water Bodies (2023-2026)
-✓ Desert (2023-2026)
-✓ Mountains (2023-2026)
-✓ Industrial (2023-2024)
-✓ Airports (2023-2024)
-✓ Ports (2023-2024)
-
-Remaining
----------
-• Agriculture (2023-2026)
-• Forest (2023-2026)
-• Industrial (2025-2026)
-• Airports (2025-2026)
-• Ports (2025-2026)
+These batches increase geographical diversity for Pix2Pix training.
 """
 
 from preprocessing.dataset_builder import build_dataset
@@ -34,21 +17,25 @@ from preprocessing.dataset_builder import build_dataset
 # ==========================================================
 
 BATCH_1 = (
-    "Agriculture_Forest_2023_2024",
+    "Agriculture_Forest_New_2023_2024",
     {
-        "Punjab_Farmland": [75.10, 30.70, 75.40, 30.90],
-        "TamilNadu_Farmland": [78.90, 10.80, 79.20, 11.00],
-        "Haryana_Farmland": [76.55, 29.15, 76.85, 29.35],
-        "Andhra_Farmland": [80.55, 16.30, 80.85, 16.50],
-        "Maharashtra_Farmland": [74.60, 20.10, 74.90, 20.30],
-        "Bihar_Farmland": [85.10, 25.40, 85.40, 25.60],
 
-        "WesternGhats": [76.10, 10.00, 76.40, 10.20],
-        "Assam_Forest": [91.50, 26.00, 91.80, 26.20],
-        "Nilgiris": [76.55, 11.30, 76.85, 11.50],
-        "Bandipur": [76.45, 11.60, 76.75, 11.80],
-        "Kaziranga": [93.20, 26.50, 93.50, 26.70],
-        "JimCorbett": [78.80, 29.40, 79.10, 29.60],
+        # Agriculture
+        "Ludhiana_Farmland": [75.72, 30.82, 76.02, 31.02],
+        "Godavari_Delta": [81.72, 16.55, 82.02, 16.75],
+        "Krishna_Basin": [80.55, 16.05, 80.85, 16.25],
+        "Cauvery_Delta": [79.20, 10.85, 79.50, 11.05],
+        "Indore_Farmland": [75.65, 22.55, 75.95, 22.75],
+        "Raipur_Farmland": [81.45, 21.15, 81.75, 21.35],
+
+        # Forest
+        "Periyar": [77.05, 9.45, 77.35, 9.65],
+        "Dandeli": [74.55, 15.10, 74.85, 15.30],
+        "Simlipal": [86.20, 21.70, 86.50, 21.90],
+        "Satpura": [78.00, 22.40, 78.30, 22.60],
+        "Melghat": [77.00, 21.20, 77.30, 21.40],
+        "Nagarhole": [76.00, 12.00, 76.30, 12.20],
+
     },
     [2023, 2024],
 )
@@ -61,21 +48,25 @@ BATCH_1 = (
 # ==========================================================
 
 BATCH_2 = (
-    "Agriculture_Forest_2025_2026",
+    "Agriculture_Forest_New_2025_2026",
     {
-        "Punjab_Farmland": [75.10, 30.70, 75.40, 30.90],
-        "TamilNadu_Farmland": [78.90, 10.80, 79.20, 11.00],
-        "Haryana_Farmland": [76.55, 29.15, 76.85, 29.35],
-        "Andhra_Farmland": [80.55, 16.30, 80.85, 16.50],
-        "Maharashtra_Farmland": [74.60, 20.10, 74.90, 20.30],
-        "Bihar_Farmland": [85.10, 25.40, 85.40, 25.60],
 
-        "WesternGhats": [76.10, 10.00, 76.40, 10.20],
-        "Assam_Forest": [91.50, 26.00, 91.80, 26.20],
-        "Nilgiris": [76.55, 11.30, 76.85, 11.50],
-        "Bandipur": [76.45, 11.60, 76.75, 11.80],
-        "Kaziranga": [93.20, 26.50, 93.50, 26.70],
-        "JimCorbett": [78.80, 29.40, 79.10, 29.60],
+        # Agriculture
+        "Ludhiana_Farmland": [75.72, 30.82, 76.02, 31.02],
+        "Godavari_Delta": [81.72, 16.55, 82.02, 16.75],
+        "Krishna_Basin": [80.55, 16.05, 80.85, 16.25],
+        "Cauvery_Delta": [79.20, 10.85, 79.50, 11.05],
+        "Indore_Farmland": [75.65, 22.55, 75.95, 22.75],
+        "Raipur_Farmland": [81.45, 21.15, 81.75, 21.35],
+
+        # Forest
+        "Periyar": [77.05, 9.45, 77.35, 9.65],
+        "Dandeli": [74.55, 15.10, 74.85, 15.30],
+        "Simlipal": [86.20, 21.70, 86.50, 21.90],
+        "Satpura": [78.00, 22.40, 78.30, 22.60],
+        "Melghat": [77.00, 21.20, 77.30, 21.40],
+        "Nagarhole": [76.00, 12.00, 76.30, 12.20],
+
     },
     [2025, 2026],
 )
@@ -83,32 +74,36 @@ BATCH_2 = (
 
 # ==========================================================
 # Batch 3
-# Only datasets still missing
 # Industrial + Airports + Ports
 # Years 2025-2026
 # ==========================================================
 
 BATCH_3 = (
-    "Industrial_Airports_Ports_2025_2026",
+    "Industrial_Airports_Ports_New_2025_2026",
     {
-        "Jamshedpur": [86.10, 22.70, 86.40, 22.90],
-        "Hazira": [72.60, 21.05, 72.90, 21.25],
-        "VizagIndustrial": [83.15, 17.60, 83.45, 17.80],
 
-        "ChennaiAirport": [80.12, 12.96, 80.22, 13.06],
-        "DelhiAirport": [77.05, 28.52, 77.18, 28.62],
-        "BengaluruAirport": [77.65, 13.15, 77.78, 13.28],
+        # Industrial
+        "AngulIndustrial": [85.05, 20.85, 85.35, 21.05],
+        "KorbaIndustrial": [82.55, 22.20, 82.85, 22.40],
+        "NeyveliIndustrial": [79.45, 11.45, 79.75, 11.65],
 
-        "ChennaiPort": [80.27, 13.08, 80.34, 13.15],
-        "MumbaiPort": [72.82, 18.90, 72.90, 18.98],
-        "MundraPort": [69.65, 22.72, 69.78, 22.85],
+        # Airports
+        "HyderabadAirport": [78.35, 17.15, 78.50, 17.30],
+        "KolkataAirport": [88.40, 22.62, 88.55, 22.77],
+        "KochiAirport": [76.35, 10.10, 76.50, 10.25],
+
+        # Ports
+        "ParadipPort": [86.55, 20.20, 86.70, 20.35],
+        "KandlaPort": [70.15, 22.95, 70.30, 23.10],
+        "VizhinjamPort": [76.90, 8.30, 77.05, 8.45],
+
     },
     [2025, 2026],
 )
 
 
 # ==========================================================
-# Remaining batches
+# Batches
 # ==========================================================
 
 BATCHES = [

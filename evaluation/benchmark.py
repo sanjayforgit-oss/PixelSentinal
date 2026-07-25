@@ -1,293 +1,319 @@
 """
-Benchmark utilities for PixelSentinel.
+PixelSentinel Benchmarking Framework
 
-This module measures model performance characteristics:
+Evaluates batches of generated RGB satellite images and
+computes benchmark statistics.
 
-    - Inference latency
-    - Throughput (images per second)
-    - GPU memory consumption
-    - Parameter count
-    - Model size estimation
-
-No training logic is included.
+Author: Member 3
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Dict, List
+
 import logging
-import time
+import pandas as pd
+from tqdm import tqdm
 
-import torch
-from torch import Tensor, nn
-
-LOGGER = logging.getLogger(__name__)
-
-__all__ = [
-    "count_parameters",
-    "estimate_model_size",
-    "measure_latency",
-    "measure_throughput",
-    "benchmark_model",
-]
+from .metrics import evaluate_metrics
+from .utils import load_image
 
 
-def count_parameters(
-    model: nn.Module,
-) -> int:
+logger = logging.getLogger(__name__)
+
+
+class Benchmark:
     """
-    Count trainable parameters.
-
-    Parameters
-    ----------
-    model:
-        Neural network model.
-
-    Returns
-    -------
-    int
-        Number of trainable parameters.
+    Benchmark generated RGB images against ground truth.
     """
 
-    return sum(
-        parameter.numel()
-        for parameter in model.parameters()
-        if parameter.requires_grad
-    )
-
-
-def estimate_model_size(
-    model: nn.Module,
-) -> float:
-    """
-    Estimate model size in megabytes.
-
-    Parameters
-    ----------
-    model:
-        Neural network model.
-
-    Returns
-    -------
-    float
-        Model size in MB.
-    """
-
-    parameters = sum(
-        parameter.numel()
-        for parameter in model.parameters()
-    )
-
-    bytes_size = (
-        parameters
-        * 4
-    )
-
-    return bytes_size / (
-        1024 ** 2
-    )
-
-
-@torch.no_grad()
-def measure_latency(
-    model: nn.Module,
-    input_tensor: Tensor,
-    device: torch.device,
-    iterations: int = 100,
-) -> float:
-    """
-    Measure average inference latency.
-
-    Parameters
-    ----------
-    model:
-        Model to benchmark.
-
-    input_tensor:
-        Input tensor.
-
-    device:
-        Execution device.
-
-    iterations:
-        Number of inference iterations.
-
-    Returns
-    -------
-    float
-        Average latency in milliseconds.
-    """
-
-    model.eval()
-
-    input_tensor = input_tensor.to(
-        device,
-        non_blocking=True,
-    )
-
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-
-    start = time.perf_counter()
-
-    for _ in range(iterations):
-
-        _ = model(
-            input_tensor
-        )
-
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-
-    end = time.perf_counter()
-
-    latency = (
-        end - start
-    ) / iterations
-
-    return latency * 1000
-
-
-@torch.no_grad()
-def measure_throughput(
-    model: nn.Module,
-    input_tensor: Tensor,
-    device: torch.device,
-    duration: float = 10.0,
-) -> float:
-    """
-    Measure inference throughput.
-
-    Parameters
-    ----------
-    model:
-        Model to benchmark.
-
-    input_tensor:
-        Input tensor.
-
-    device:
-        Execution device.
-
-    duration:
-        Benchmark duration in seconds.
-
-    Returns
-    -------
-    float
-        Images processed per second.
-    """
-
-    model.eval()
-
-    input_tensor = input_tensor.to(
-        device,
-        non_blocking=True,
-    )
-
-    count = 0
-
-    start = time.perf_counter()
-
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-
-    while (
-        time.perf_counter() - start
-        <
-        duration
+    def __init__(
+        self,
+        prediction_dir: str | Path,
+        target_dir: str | Path,
     ):
 
-        _ = model(
-            input_tensor
-        )
+        self.prediction_dir = Path(prediction_dir)
+        self.target_dir = Path(target_dir)
 
-        count += input_tensor.size(0)
-
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-
-    elapsed = (
-        time.perf_counter()
-        -
-        start
-    )
-
-    return count / elapsed
-
-
-@torch.no_grad()
-def benchmark_model(
-    model: nn.Module,
-    input_tensor: Tensor,
-    device: torch.device,
-) -> dict[str, float]:
-    """
-    Run complete model benchmark.
-
-    Parameters
-    ----------
-    model:
-        Neural network model.
-
-    input_tensor:
-        Example input tensor.
-
-    device:
-        Execution device.
-
-    Returns
-    -------
-    dict[str, float]
-        Benchmark results.
-    """
-
-    parameters = count_parameters(
-        model
-    )
-
-    size_mb = estimate_model_size(
-        model
-    )
-
-    latency = measure_latency(
-        model=model,
-        input_tensor=input_tensor,
-        device=device,
-    )
-
-    throughput = measure_throughput(
-        model=model,
-        input_tensor=input_tensor,
-        device=device,
-    )
-
-    gpu_memory = 0.0
-
-    if device.type == "cuda":
-
-        gpu_memory = (
-            torch.cuda.max_memory_allocated(
-                device=device
+        if not self.prediction_dir.exists():
+            raise FileNotFoundError(
+                f"Prediction directory not found:\n{self.prediction_dir}"
             )
-            /
-            (1024 ** 3)
+
+        if not self.target_dir.exists():
+            raise FileNotFoundError(
+                f"Target directory not found:\n{self.target_dir}"
+            )
+
+        self.results: List[Dict] = []
+
+    # ------------------------------------------------------
+
+    def image_pairs(self):
+
+        """
+        Match prediction images with ground-truth images
+        using identical filenames.
+        """
+
+        prediction_files = sorted(
+            self.prediction_dir.glob("*")
         )
 
-    results = {
-        "parameters": float(
-            parameters
-        ),
-        "model_size_mb": size_mb,
-        "latency_ms": latency,
-        "throughput_images_per_second": (
-            throughput
-        ),
-        "gpu_memory_gb": gpu_memory,
-    }
+        for pred_path in prediction_files:
 
-    LOGGER.info(
-        "Benchmark results: %s",
-        results,
-    )
+            target_path = self.target_dir / pred_path.name
 
-    return results
+            if target_path.exists():
+
+                yield pred_path, target_path
+
+            else:
+
+                logger.warning(
+                    "Missing target image: %s",
+                    pred_path.name,
+                )
+
+    # ------------------------------------------------------
+
+    def evaluate(self):
+
+        """
+        Evaluate every image pair.
+        """
+
+        logger.info("Running benchmark...")
+
+        self.results.clear()
+
+        pairs = list(self.image_pairs())
+
+        for pred_path, gt_path in tqdm(
+            pairs,
+            desc="Benchmark",
+        ):
+
+            pred = load_image(pred_path)
+            gt = load_image(gt_path)
+
+            metrics = evaluate_metrics(
+                pred,
+                gt,
+            )
+
+            metrics["image"] = pred_path.name
+
+            self.results.append(metrics)
+
+        logger.info(
+            "Finished evaluating %d images.",
+            len(self.results),
+        )
+
+            # ------------------------------------------------------
+
+    def results_dataframe(self) -> pd.DataFrame:
+        """
+        Convert evaluation results into a pandas DataFrame.
+
+        Returns:
+            pd.DataFrame
+        """
+
+        if not self.results:
+            return pd.DataFrame()
+
+        columns = ["image"] + [
+            c for c in self.results[0].keys()
+            if c != "image"
+        ]
+
+        return pd.DataFrame(
+            self.results,
+            columns=columns,
+        )
+
+    # ------------------------------------------------------
+
+    def average_metrics(self) -> Dict[str, float]:
+        """
+        Compute average value of every metric.
+
+        Returns:
+            Dictionary containing average metrics.
+        """
+
+        df = self.results_dataframe()
+
+        if df.empty:
+            return {}
+
+        averages = {}
+
+        for column in df.columns:
+
+            if column == "image":
+                continue
+
+            averages[column] = float(df[column].mean())
+
+        return averages
+
+    # ------------------------------------------------------
+
+    def best_images(
+        self,
+        metric: str = "PSNR",
+        top_k: int = 10,
+    ) -> pd.DataFrame:
+        """
+        Return best-performing images.
+
+        Metrics where higher is better:
+            PSNR
+            SSIM
+            PCC
+            UIQI
+
+        Metrics where lower is better:
+            MSE
+            RMSE
+            MAE
+            SAM
+            ERGAS
+            LPIPS
+        """
+
+        df = self.results_dataframe()
+
+        if df.empty:
+            return df
+
+        higher_is_better = {
+            "PSNR",
+            "SSIM",
+            "PCC",
+            "UIQI",
+        }
+
+        ascending = metric not in higher_is_better
+
+        return (
+            df.sort_values(
+                metric,
+                ascending=ascending,
+            )
+            .head(top_k)
+            .reset_index(drop=True)
+        )
+
+    # ------------------------------------------------------
+
+    def worst_images(
+        self,
+        metric: str = "PSNR",
+        top_k: int = 10,
+    ) -> pd.DataFrame:
+        """
+        Return worst-performing images.
+        """
+
+        df = self.results_dataframe()
+
+        if df.empty:
+            return df
+
+        higher_is_better = {
+            "PSNR",
+            "SSIM",
+            "PCC",
+            "UIQI",
+        }
+
+        ascending = metric in higher_is_better
+
+        return (
+            df.sort_values(
+                metric,
+                ascending=ascending,
+            )
+            .head(top_k)
+            .reset_index(drop=True)
+        )
+
+    # ------------------------------------------------------
+
+    def save_csv(
+        self,
+        output_path: str | Path,
+    ) -> None:
+        """
+        Save image-wise benchmark results.
+        """
+
+        output_path = Path(output_path)
+
+        output_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        df = self.results_dataframe()
+
+        df.to_csv(
+            output_path,
+            index=False,
+        )
+
+        logger.info(
+            "Benchmark saved to %s",
+            output_path,
+        )
+
+    # ------------------------------------------------------
+
+    def summary_dataframe(self) -> pd.DataFrame:
+        """
+        Return summary statistics.
+        """
+
+        averages = self.average_metrics()
+
+        if not averages:
+            return pd.DataFrame()
+
+        return pd.DataFrame(
+            [averages]
+        )
+
+    # ------------------------------------------------------
+
+    def save_summary(
+        self,
+        output_path: str | Path,
+    ) -> None:
+        """
+        Save average metrics.
+        """
+
+        output_path = Path(output_path)
+
+        output_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        summary = self.summary_dataframe()
+
+        summary.to_csv(
+            output_path,
+            index=False,
+        )
+
+        logger.info(
+            "Summary saved to %s",
+            output_path,
+        )

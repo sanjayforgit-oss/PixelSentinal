@@ -149,3 +149,88 @@ ROI_LIST = {
 
 }
 
+# ==========================================================
+# QUALITY CHECK CONFIGURATION
+# ==========================================================
+
+EXPECTED_TOTAL_BANDS = len(INPUT_BANDS) + len(TARGET_BANDS)
+
+EXPECTED_BAND_ORDER = INPUT_BANDS + TARGET_BANDS
+
+SUPPORTED_FILE_EXTENSIONS = [
+    ".tif",
+    ".tiff",
+]
+
+QUALITY_REPORT_FILE = METADATA_DIR / "quality_report.csv"
+
+
+
+# ==========================================================
+# NORMALIZATION SETTINGS
+# ==========================================================
+
+# Landsat Collection 2 Level-2
+# Surface Reflectance
+REFLECTANCE_SCALE = 0.0000275
+REFLECTANCE_OFFSET = -0.2
+
+# Surface Temperature (Kelvin)
+THERMAL_SCALE = 0.00341802
+THERMAL_OFFSET = 149.0
+
+# Physical clipping ranges
+REFLECTANCE_CLIP = (0.0, 1.0)
+THERMAL_CLIP = (200.0, 400.0)
+
+# Output datatype
+NORMALIZED_DTYPE = "float32"
+
+# Normalized dataset directories
+NORMALIZED_INPUT_DIR = (
+    PROCESSED_DATASET_DIR /
+    "normalized" /
+    "input"
+)
+
+NORMALIZED_TARGET_DIR = (
+    PROCESSED_DATASET_DIR /
+    "normalized" /
+    "target"
+)
+
+NORMALIZED_INPUT_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+NORMALIZED_TARGET_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+# ==========================================================
+# TILING
+# ==========================================================
+
+TILE_SIZE = 256
+
+TILE_STRIDE = 256          # Normal stride
+
+USE_BOUNDARY_OVERLAP = True
+
+GENERATE_TILE_METADATA = True
+
+TILE_COMPRESSION = "lzw"
+
+INPUT_TILE_DIR = PROCESSED_DATASET_DIR / "input_tiles"
+
+TARGET_TILE_DIR = PROCESSED_DATASET_DIR / "target_tiles"
+
+TILE_METADATA_FILE = METADATA_DIR / "tile_metadata.csv"
+
+for directory in [
+    INPUT_TILE_DIR,
+    TARGET_TILE_DIR,
+]:
+    directory.mkdir(parents=True, exist_ok=True)
