@@ -1,6 +1,6 @@
 """
 Training step logic for PixelSentinel Pix2Pix.
-    Handles forward passes, loss computation, AMP optimization steps, and battery safety checks.
+Handles forward passes, loss computation, AMP optimization steps, and battery safety checks.
 """
 import logging
 from typing import Dict
@@ -47,7 +47,12 @@ class Pix2PixTrainer:
         self.generator.train()
         self.discriminator.train()
         
-        epoch_losses = {"g_loss": 0.0, "d_loss": 0.0}
+        epoch_losses = {
+            "g_loss": 0.0,
+            "d_loss": 0.0,
+            "perc_loss": 0.0,
+            "spec_loss": 0.0,
+        }
 
         for batch_idx, (inputs, targets) in enumerate(dataloader):
             # --- AC POWER FAILSAFE ---
@@ -69,13 +74,14 @@ class Pix2PixTrainer:
                 fake_pred_d = self.discriminator(inputs, fake_targets.detach())
                 fake_pred_g = self.discriminator(inputs, fake_targets)
 
-                # 3. Calculate all losses using your losses.py
+                # 3. Calculate all losses using multi-objective Pix2PixLoss (including NDVI/NDWI & VGG-19)
                 losses = self.criterion(
+                    input_image=inputs,
                     real_prediction=real_pred,
                     fake_prediction_for_discriminator=fake_pred_d,
                     fake_prediction_for_generator=fake_pred_g,
                     generated_image=fake_targets,
-                    target_image=targets
+                    target_image=targets,
                 )
 
             # 4. Backward & Optimize (Using AMP)
@@ -88,11 +94,17 @@ class Pix2PixTrainer:
 
             epoch_losses["g_loss"] += losses.generator_loss.item()
             epoch_losses["d_loss"] += losses.discriminator_loss.item()
+            epoch_losses["perc_loss"] += losses.generator_perceptual_loss.item()
+            epoch_losses["spec_loss"] += losses.generator_spectral_loss.item()
 
             if batch_idx % 50 == 0:
-                LOGGER.info(f"Epoch [{epoch}] Batch [{batch_idx}/{len(dataloader)}] - "
-                            f"G_Loss: {losses.generator_loss.item():.4f} - "
-                            f"D_Loss: {losses.discriminator_loss.item():.4f}")
+                LOGGER.info(
+                    f"Epoch [{epoch}] Batch [{batch_idx}/{len(dataloader)}] - "
+                    f"G_Loss: {losses.generator_loss.item():.4f} - "
+                    f"D_Loss: {losses.discriminator_loss.item():.4f} - "
+                    f"Perc_Loss: {losses.generator_perceptual_loss.item():.4f} - "
+                    f"Spec_Loss: {losses.generator_spectral_loss.item():.4f}"
+                )
 
-        # Average losses
+        # Average losses over all batches
         return {k: v / len(dataloader) for k, v in epoch_losses.items()}
