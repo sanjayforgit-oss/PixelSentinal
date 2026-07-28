@@ -8,7 +8,8 @@ Implements the generator described in:
     CVPR 2017.
 
 The generator follows an encoder-decoder U-Net architecture with
-skip connections between corresponding encoder and decoder stages.
+skip connections between corresponding encoder and decoder stages,
+enhanced with an edge-sharpening module for high-frequency satellite detail.
 """
 
 from __future__ import annotations
@@ -27,9 +28,30 @@ from colorization.models.blocks import (
 __all__ = ["Generator"]
 
 
+class EdgeSharpeningModule(nn.Module):
+    """
+    Explicit high-frequency detail and edge enhancement sub-module
+    to sharpen satellite boundaries (roads, water bodies, agricultural borders).
+    """
+    def __init__(self, channels: int) -> None:
+        super().__init__()
+        # Depthwise-separable or fine convolutional residual path for edges
+        self.edge_conv = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.InstanceNorm2d(channels),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.InstanceNorm2d(channels)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Residual high-frequency injection
+        return x + self.edge_conv(x)
+
+
 class Generator(nn.Module):
     """
-    Pix2Pix U-Net Generator.
+    Pix2Pix U-Net Generator with Edge Sharpening.
 
     Input:
         (B, input_channels, H, W)
@@ -122,26 +144,27 @@ class Generator(nn.Module):
         self.up4 = UpBlock(
             in_channels=features * 16,
             out_channels=features * 8,
-            
         )
 
         self.up5 = UpBlock(
             in_channels=features * 16,
             out_channels=features * 4,
-            
         )
 
         self.up6 = UpBlock(
             in_channels=features * 8,
             out_channels=features * 2,
-            
         )
 
         self.up7 = UpBlock(
             in_channels=features * 4,
             out_channels=features,
-            
         )
+
+        # ==========================================================
+        # Edge Sharpening & Super-Resolution Enhancement
+        # ==========================================================
+        self.edge_enhancer = EdgeSharpeningModule(channels=features * 2)
 
         self.final = FinalBlock(
             in_channels=features * 2,
@@ -163,7 +186,7 @@ class Generator(nn.Module):
         Returns
         -------
         torch.Tensor
-            Generated RGB image.
+            Generated RGB image with sharp spatial boundaries.
         """
 
         # ==========================================================
@@ -209,6 +232,9 @@ class Generator(nn.Module):
         u7 = self.up7(u6)
         u7 = torch.cat((u7, d1), dim=1)
 
-        output = self.final(u7)
+        # Apply high-frequency edge enhancement before final projection
+        enhanced_features = self.edge_enhancer(u7)
+
+        output = self.final(enhanced_features)
 
         return output

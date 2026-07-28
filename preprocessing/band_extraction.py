@@ -47,7 +47,9 @@ from preprocessing.config import (
 )
 
 from preprocessing.logger import get_logger
-
+from preprocessing.resource_monitor import (
+    monitor_progress,
+)
 
 logger = get_logger(__name__)
 
@@ -490,12 +492,18 @@ class BandExtractor:
 
         results: list[BandExtractionResult] = []
 
-        for scene_path in scene_paths:
+        total_files = len(scene_paths)
 
+        for index, scene_path in enumerate(scene_paths, start=1):
+
+            monitor_progress(
+                current=index,
+                total=total_files,
+                every=100,
+            )
             result = self.process_scene(scene_path)
 
             results.append(result)
-
         return results
 
 
@@ -560,6 +568,38 @@ def print_summary(
     logger.info("=" * 80)
 
 
+def extract_bands():
+    """
+    Pipeline entry point.
+    Returns a dictionary understood by PipelineManager.
+    """
+
+    start_time = time.perf_counter()
+
+    extractor = BandExtractor()
+
+    results = extractor.process_dataset()
+
+    elapsed = time.perf_counter() - start_time
+
+    success = sum(r.success for r in results)
+
+    failed = len(results) - success
+
+    print_summary(results)
+
+    logger.info(
+        "Execution Time : %.2f seconds",
+        elapsed,
+    )
+
+    return {
+        "success": failed == 0,
+        "processed": success,
+        "failed": failed,
+        "execution_time": elapsed,
+    }
+
 # ==========================================================
 # Main
 # ==========================================================
@@ -584,6 +624,25 @@ def main() -> None:
         "Execution Time : %.2f seconds",
         elapsed,
     )
+
+def process_dataset():
+    """
+    Entry point for the Pipeline Manager to execute band extraction.
+    """
+    # Assuming your main class is named BandExtractor
+    extractor = BandExtractor() 
+    results = extractor.process_dataset()
+    
+    # Calculate passes and failures
+    passed = sum(1 for r in results if r.success)
+    failed = len(results) - passed
+    
+    return {
+        "success": failed == 0,
+        "processed": passed,
+        "failed": failed,
+    }
+
 if __name__ == "__main__":
 
     main()

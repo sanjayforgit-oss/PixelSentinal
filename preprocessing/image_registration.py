@@ -524,6 +524,26 @@ class ImageRegistration:
 # Main
 # ==========================================================
 
+def verify_registration():
+    """
+    Pipeline entry point for image registration verification.
+    """
+
+    registration = ImageRegistration()
+
+    results = registration.verify_dataset()
+
+    passed = sum(
+        r.success for r in results
+    )
+
+    failed = len(results) - passed
+
+    return {
+        "success": failed == 0,
+        "processed": passed,
+        "failed": failed,
+    }
 
 def main() -> None:
     """

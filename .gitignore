@@ -1,11 +1,28 @@
 # Ignore the virtual environment
 .venv/
 
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
 # Ignore heavy datasets
 datasets/raw/
 datasets/processed/
 datasets/tiles/
+datasets/test/
+datasets/train/
+datasets/val/
 
 # Ignore heavy AI weights
+checkpoints/
 models/checkpoints/
 models/pretrained/
+
+# Ignore generated workspaces and image/data dumps
+future/
+pipeline_workspace/
+*.tif
+*.tiff
+*.png
+*.jpg
+*.jpeg

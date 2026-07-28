@@ -14,27 +14,115 @@ from pathlib import Path
 # Project Root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Dataset Directories
+# ==========================================================
+# DATASET LOCATION
+# ==========================================================
+
+# False -> Use datasets/ (training / production)
+# True  -> Use pipeline_workspace/ (preprocessing)
+
+USE_PIPELINE_WORKSPACE = True
+# ==========================================================
+# DATASET ROOTS
+# ==========================================================
+
 DATASET_DIR = PROJECT_ROOT / "datasets"
 
-RAW_DATASET_DIR = DATASET_DIR / "raw"
-PROCESSED_DATASET_DIR = DATASET_DIR / "processed"
+PIPELINE_WORKSPACE_DIR = (
+    PROJECT_ROOT /
+    "pipeline_workspace"
+)
 
-METADATA_DIR = DATASET_DIR / "metadata"
+# ==========================================================
+# ACTIVE DATASET ROOT
+# ==========================================================
 
+ACTIVE_DATASET_ROOT = (
 
-TRAIN_DIR = DATASET_DIR / "train"
-VAL_DIR = DATASET_DIR / "val"
-TEST_DIR = DATASET_DIR / "test"
+    PIPELINE_WORKSPACE_DIR
 
+    if USE_PIPELINE_WORKSPACE
+
+    else DATASET_DIR
+
+)
+
+# ==========================================================
+# DATASET DIRECTORIES
+# ==========================================================
+
+INCOMING_DATASET_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "incoming"
+)
+
+RAW_DATASET_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "raw"
+)
+
+PROCESSED_DATASET_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "processed"
+)
+
+METADATA_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "metadata"
+)
+
+REPORT_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "reports"
+)
+
+MANIFEST_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "manifest"
+)
+
+TRAIN_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "train"
+)
+
+VAL_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "val"
+)
+
+TEST_DIR = (
+    ACTIVE_DATASET_ROOT /
+    "test"
+)
+
+PIPELINE_DIR = (
+    PROJECT_ROOT /
+    "pipeline"
+)
 # Create directories automatically
 for directory in [
+
+    INCOMING_DATASET_DIR,
+
     RAW_DATASET_DIR,
+
     PROCESSED_DATASET_DIR,
+
     METADATA_DIR,
+
+    REPORT_DIR,
+
+    MANIFEST_DIR,
+
     TRAIN_DIR,
+
     VAL_DIR,
+
     TEST_DIR,
+
+    PIPELINE_DIR,
+
 ]:
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -213,7 +301,7 @@ NORMALIZED_TARGET_DIR.mkdir(
 # TILING
 # ==========================================================
 
-TILE_SIZE = 256
+#TILE_SIZE = 256 # already available
 
 TILE_STRIDE = 256          # Normal stride
 
@@ -234,3 +322,66 @@ for directory in [
     TARGET_TILE_DIR,
 ]:
     directory.mkdir(parents=True, exist_ok=True)
+
+# ==========================================================
+# PREPROCESSING PIPELINE
+# ==========================================================
+
+PIPELINE_VERSION = "2.0"
+
+AUTO_COPY_INCOMING = True
+
+AUTO_CLEAN_OUTPUT = True
+
+STOP_ON_ERROR = True
+
+VERIFY_AFTER_EACH_STAGE = True
+
+GENERATE_MANIFEST = True
+
+GENERATE_REPORT = True
+
+PRINT_PIPELINE_SUMMARY = True
+
+
+# ==========================================================
+# DATASET SPLIT
+# ==========================================================
+
+TRAIN_RATIO = 0.80
+
+VALIDATION_RATIO = 0.10
+
+TEST_RATIO = 0.10
+
+# ==========================================================
+# PROCESSED OUTPUTS
+# ==========================================================
+
+INPUT_DIR_NAME = "input"
+
+TARGET_DIR_NAME = "target"
+
+NORMALIZED_DIR_NAME = "normalized"
+
+TILE_DIR_NAME = "tiles"
+
+AUGMENTED_DIR_NAME = "augmented"
+
+
+# ==========================================================
+# MANIFEST
+# ==========================================================
+
+DATASET_MANIFEST = (
+    MANIFEST_DIR /
+    "dataset_manifest.json"
+)
+
+PIPELINE_REPORT = (
+    REPORT_DIR /
+    "pipeline_report.json"
+)
+
+
+LOG_LEVEL = "INFO"

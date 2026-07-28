@@ -41,7 +41,9 @@ from preprocessing.config import (
 )
 
 from preprocessing.logger import get_logger
-
+from preprocessing.resource_monitor import (
+    monitor_progress,
+)
 logger = get_logger(__name__)
 
 
@@ -489,7 +491,15 @@ class GeoTIFFNormalizer:
 
         results: list[NormalizationResult] = []
 
-        for file in files:
+        total_files = len(files)
+
+        for index, file in enumerate(files, start=1):
+
+            monitor_progress(
+                current=index,
+                total=total_files,
+                every=100,
+            )
 
             result = self.process_file(
                 input_file=file,
@@ -499,9 +509,7 @@ class GeoTIFFNormalizer:
             )
 
             results.append(result)
-
         return results
-
     # ======================================================
     # Complete Dataset
     # ======================================================
@@ -651,11 +659,45 @@ def validate_outputs() -> None:
             "Normalization dataset verified."
         )
 
+def normalize_dataset():
+    """
+    Pipeline entry point for normalization.
+    """
+
+    start_time = time.perf_counter()
+
+    normalizer = GeoTIFFNormalizer()
+
+    results = normalizer.process_dataset()
+
+    elapsed = time.perf_counter() - start_time
+
+    print_summary(
+        results,
+        elapsed,
+    )
+
+    validate_outputs()
+    logger.info(
+        "Execution Time : %.2f seconds",
+        elapsed,
+    )
+    success = sum(r.success for r in results)
+    failed = len(results) - success
+
+    return {
+        "success": failed == 0,
+        "processed": success,
+        "failed": failed,
+        "execution_time": elapsed,
+    }
+
 
 # ==========================================================
 # Main
 # ==========================================================
-
+def process_dataset():
+    return normalize_dataset()
 
 def main() -> None:
     """
@@ -688,6 +730,7 @@ def main() -> None:
 # ==========================================================
 # Entry Point
 # ==========================================================
+
 
 if __name__ == "__main__":
 

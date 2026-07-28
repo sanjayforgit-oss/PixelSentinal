@@ -780,6 +780,25 @@ def main() -> None:
 
     checker.validate_dataset()
 
+def validate_dataset():
+    """
+    Entry point for the Pipeline Manager to execute quality validation.
+    """
+    checker = QualityChecker() 
+    checker.validate_dataset()
+    
+    # Access the results stored inside the checker instance
+    results = checker.results
+    
+    # Your dataclass uses 'valid' instead of 'success'
+    passed = sum(r.valid for r in results)
+    failed = len(results) - passed
+    
+    return {
+        "success": failed == 0,
+        "processed": passed,
+        "failed": failed,
+    }
 
 if __name__ == "__main__":
 

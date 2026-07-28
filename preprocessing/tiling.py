@@ -41,7 +41,9 @@ from preprocessing.config import (
 )
 
 from preprocessing.logger import get_logger
-
+from preprocessing.resource_monitor import (
+    monitor_progress,
+)
 logger = get_logger(__name__)
 
 
@@ -589,7 +591,7 @@ class ImageTiler:
     # Process Dataset
     # ======================================================
 
-    def process_dataset(self) -> None:
+    def process_dataset(self) -> dict:
         """
         Process the complete normalized dataset.
         """
@@ -613,7 +615,15 @@ class ImageTiler:
         failed = 0
         total_tiles = 0
 
+        total_files = len(input_files)
+
         for index, input_file in enumerate(input_files, start=1):
+
+            monitor_progress(
+                current=index,
+                total=total_files,
+                every=25,
+            )
 
             result = self.process_scene(
                 input_file,
@@ -679,7 +689,22 @@ class ImageTiler:
                 "%d scene(s) failed during tiling.",
                 failed,
             )
+        return {
+            "success": failed == 0,
+            "processed": successful,
+            "failed": failed,
+            "tiles_generated": total_tiles,
+            "execution_time": elapsed,
+        }
 
+def generate_tiles():
+    """
+    Pipeline entry point.
+    """
+
+    tiler = ImageTiler()
+
+    return tiler.process_dataset()
 
 # ==========================================================
 # Main
@@ -694,6 +719,15 @@ def main() -> None:
 
     tiler.process_dataset()
 
+def process_dataset():
+    """
+    Entry point for the Pipeline Manager to execute tiling.
+    """
+    tiler = ImageTiler()
+    
+    # Since the class already returns the perfect dictionary, 
+    # we just capture it and return it directly!
+    return tiler.process_dataset()
 
 if __name__ == "__main__":
 
