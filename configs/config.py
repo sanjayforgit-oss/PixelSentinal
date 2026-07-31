@@ -159,6 +159,9 @@ class TrainingConfig:
     save_every: int = 5
 
     random_seed: int = 42
+    lambda_l1: float = 100.0
+    lambda_perceptual: float = 1.0
+    lambda_spectral: float = 0.0
 
 
 # ==============================================================================

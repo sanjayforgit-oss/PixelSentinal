@@ -1,7 +1,7 @@
 """
 PixelSentinel - PyTorch Dataset & DataLoader Module (Local Training)
 Handles reading multi-channel GeoTIFF tiles and executing synchronous 
-on-the-fly Albumentations geometric transformations.
+on-the-fly Albumentations geometric transformations with proper [-1, 1] normalization.
 """
 from pathlib import Path
 from typing import Tuple, Dict, Optional
@@ -44,12 +44,10 @@ class PixelSentinelDataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         input_path = self.input_files[idx]
         
-        # Replace _input suffix with _target suffix to locate target file
         target_name = input_path.name.replace("_input.tif", "_target.tif").replace("_input.tiff", "_target.tiff")
         target_path = self.target_dir / target_name
 
         if not target_path.exists():
-            # Fallback in case filenames are identical without suffix
             target_path = self.target_dir / input_path.name
 
         with rasterio.open(input_path) as src_in:
@@ -57,10 +55,32 @@ class PixelSentinelDataset(Dataset):
         with rasterio.open(target_path) as src_target:
             target_img = src_target.read().astype(np.float32).transpose(1, 2, 0)
 
+        # Apply Albumentations spatial transforms
         augmented = self.transform(image=input_img, target=target_img)
         
-        input_tensor = torch.from_numpy(augmented['image']).permute(2, 0, 1).contiguous()
-        target_tensor = torch.from_numpy(augmented['target']).permute(2, 0, 1).contiguous()
+        input_np = augmented['image']
+        target_np = augmented['target']
+
+        # -------------------------------------------------------------
+        # DYNAMIC MIN-MAX RANGE NORMALIZATION TO [-1.0, 1.0]
+        # -------------------------------------------------------------
+        # Safely scale target_np to [-1.0, 1.0]
+        t_min, t_max = target_np.min(), target_np.max()
+        if t_max - t_min > 1e-5:
+            target_np = 2.0 * (target_np - t_min) / (t_max - t_min) - 1.0
+        else:
+            target_np = np.zeros_like(target_np)
+
+        # Safely scale input_np to [-1.0, 1.0]
+        i_min, i_max = input_np.min(), input_np.max()
+        if i_max - i_min > 1e-5:
+            input_np = 2.0 * (input_np - i_min) / (i_max - i_min) - 1.0
+        else:
+            input_np = np.zeros_like(input_np)
+
+        # Convert to PyTorch Tensors (C, H, W)
+        input_tensor = torch.from_numpy(input_np).permute(2, 0, 1).float().contiguous()
+        target_tensor = torch.from_numpy(target_np).permute(2, 0, 1).float().contiguous()
 
         return input_tensor, target_tensor
 

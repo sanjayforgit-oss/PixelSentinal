@@ -62,48 +62,54 @@ class Pix2PixTrainer:
 
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
-            self.gen_opt.zero_grad()
+            # =========================================================
+            # 1. Train Discriminator
+            # =========================================================
             self.disc_opt.zero_grad()
-
             with autocast_context(self.device):
-                # 1. Generate fake images
-                fake_targets = self.generator(inputs)
-
-                # 2. Discriminator predictions
+                with torch.no_grad():
+                    fake_targets = self.generator(inputs)
+                
                 real_pred = self.discriminator(inputs, targets)
                 fake_pred_d = self.discriminator(inputs, fake_targets.detach())
-                fake_pred_g = self.discriminator(inputs, fake_targets)
+                
+                d_loss, _, _ = self.criterion.discriminator_loss(real_pred, fake_pred_d)
 
-                # 3. Calculate all losses using multi-objective Pix2PixLoss (including NDVI/NDWI & VGG-19)
-                losses = self.criterion(
+            self.scaler.scale(d_loss).backward()
+            self.scaler.step(self.disc_opt)
+
+            # =========================================================
+            # 2. Train Generator
+            # =========================================================
+            self.gen_opt.zero_grad()
+            with autocast_context(self.device):
+                fake_targets_g = self.generator(inputs)
+                fake_pred_g = self.discriminator(inputs, fake_targets_g)
+
+                g_total_loss, g_gan_loss, g_l1_loss, g_perc_loss, g_spec_loss = self.criterion.generator_loss(
                     input_image=inputs,
-                    real_prediction=real_pred,
-                    fake_prediction_for_discriminator=fake_pred_d,
-                    fake_prediction_for_generator=fake_pred_g,
-                    generated_image=fake_targets,
+                    fake_prediction=fake_pred_g,
+                    generated_image=fake_targets_g,
                     target_image=targets,
                 )
 
-            # 4. Backward & Optimize (Using AMP)
-            self.scaler.scale(losses.discriminator_loss).backward(retain_graph=True)
-            self.scaler.scale(losses.generator_loss).backward()
-
-            self.scaler.step(self.disc_opt)
+            self.scaler.scale(g_total_loss).backward()
             self.scaler.step(self.gen_opt)
             self.scaler.update()
 
-            epoch_losses["g_loss"] += losses.generator_loss.item()
-            epoch_losses["d_loss"] += losses.discriminator_loss.item()
-            epoch_losses["perc_loss"] += losses.generator_perceptual_loss.item()
-            epoch_losses["spec_loss"] += losses.generator_spectral_loss.item()
+            # Record losses
+            epoch_losses["g_loss"] += g_total_loss.item()
+            epoch_losses["d_loss"] += d_loss.item()
+            epoch_losses["perc_loss"] += g_perc_loss.item()
+            epoch_losses["spec_loss"] += g_spec_loss.item()
 
             if batch_idx % 50 == 0:
                 LOGGER.info(
                     f"Epoch [{epoch}] Batch [{batch_idx}/{len(dataloader)}] - "
-                    f"G_Loss: {losses.generator_loss.item():.4f} - "
-                    f"D_Loss: {losses.discriminator_loss.item():.4f} - "
-                    f"Perc_Loss: {losses.generator_perceptual_loss.item():.4f} - "
-                    f"Spec_Loss: {losses.generator_spectral_loss.item():.4f}"
+                    f"G_Loss: {g_total_loss.item():.4f} - "
+                    f"D_Loss: {d_loss.item():.4f} - "
+                    f"Perc_Loss: {g_perc_loss.item():.4f} - "
+                    f"Spec_Loss: {g_spec_loss.item():.4f}"
                 )
 
         # Average losses over all batches

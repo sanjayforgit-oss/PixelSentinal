@@ -174,7 +174,10 @@ def main() -> None:
     if checkpoint_path.exists():
         checkpoint = torch.load(checkpoint_path, map_location=device)
         if "generator_state_dict" in checkpoint:
-            generator.load_state_dict(checkpoint["generator_state_dict"])
+            generator.load_state_dict(
+                checkpoint["generator_state_dict"],
+                strict=True
+                )
         else:
             raise KeyError(
                 f"Checkpoint {checkpoint_path} does not contain 'generator_state_dict'."

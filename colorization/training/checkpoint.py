@@ -173,20 +173,33 @@ def load_checkpoint(
     )
 
     generator.load_state_dict(
-        checkpoint["generator_state_dict"]
+        checkpoint["generator_state_dict"],
+        strict=False
     )
 
     discriminator.load_state_dict(
         checkpoint["discriminator_state_dict"]
     )
 
-    generator_optimizer.load_state_dict(
-        checkpoint["generator_optimizer_state_dict"]
-    )
+    try:
+        generator_optimizer.load_state_dict(
+            checkpoint["generator_optimizer_state_dict"]
+        )
+    except ValueError as e:
+        LOGGER.warning(
+            "Generator architecture changed (added edge_enhancer). "
+            "Re-initializing generator optimizer state for new parameters."
+        )
 
-    discriminator_optimizer.load_state_dict(
-        checkpoint["discriminator_optimizer_state_dict"]
-    )
+    try:
+        discriminator_optimizer.load_state_dict(
+            checkpoint["discriminator_optimizer_state_dict"]
+        )
+    except ValueError as e:
+        LOGGER.warning(
+            "Discriminator architecture changed (added edge_enhancer). "
+            "Re-initializing discriminator optimizer state for new parameters."
+        )
 
     if (
         scaler is not None

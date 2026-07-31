@@ -253,11 +253,12 @@ class DownBlock(nn.Module):
 
 class UpBlock(nn.Module):
     """
-    Upsampling block.
+    Upsampling block using resize-convolution to avoid checkerboard artifacts.
 
     Structure:
 
-        ConvTranspose2d
+        Upsample (Bilinear)
+        -> Conv2d
         -> Normalization
         -> ReLU
         -> Optional Dropout
@@ -268,30 +269,8 @@ class UpBlock(nn.Module):
         in_channels: int,
         out_channels: int,
         normalization: Optional[str] = None,
-        kernel_size: int = 4,
-        stride: int = 2,
-        padding: int = 1,
         bias: Optional[bool] = None,
     ) -> None:
-        """
-        Initialize UpBlock.
-
-        Args:
-            in_channels:
-                Input channels.
-            out_channels:
-                Output channels.
-            normalization:
-                Normalization type.
-            kernel_size:
-                Kernel size.
-            stride:
-                Stride.
-            padding:
-                Padding.
-            bias:
-                Whether transpose convolution uses bias.
-        """
         super().__init__()
         if bias is None:
             norm_type = (
@@ -299,16 +278,16 @@ class UpBlock(nn.Module):
                 if normalization is None
                 else normalization
             )
-
             bias = norm_type.lower() == "none"
 
         layers = [
-            nn.ConvTranspose2d(
+            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+            nn.Conv2d(
                 in_channels=in_channels,
                 out_channels=out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=padding,
+                kernel_size=3,
+                stride=1,
+                padding=1,
                 bias=bias,
             ),
             get_normalization(normalization, out_channels),
@@ -319,6 +298,9 @@ class UpBlock(nn.Module):
             layers.append(nn.Dropout(0.5))
 
         self.block = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.block(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -373,14 +355,8 @@ class FinalBlock(nn.Module):
         super().__init__()
 
         self.block = nn.Sequential(
-            nn.ConvTranspose2d(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=padding,
-                bias=bias,
-            ),
+            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
             get_activation("tanh"),
         )
 

@@ -44,9 +44,12 @@ class VGGPerceptualLoss(nn.Module):
         self.to(device)
 
     def forward(self, generated: Tensor, target: Tensor) -> Tensor:
-        # Normalize from [-1, 1] to [0, 1] if needed, or use directly depending on transform
-        gen_features = self.feature_extractor(generated)
-        target_features = self.feature_extractor(target)
+        # Convert inputs from [-1, 1] to [0, 1] range for standard VGG feature extraction
+        gen_norm = (generated + 1.0) / 2.0
+        tgt_norm = (target + 1.0) / 2.0
+        
+        gen_features = self.feature_extractor(gen_norm)
+        target_features = self.feature_extractor(tgt_norm)
         return nn.functional.l1_loss(gen_features, target_features)
 
 
@@ -104,10 +107,11 @@ class Pix2PixLoss(nn.Module):
         Initialize loss functions and weights.
         """
         super().__init__()
-
+        # Standard Pix2Pix baseline loss weights
         self.lambda_l1: float = getattr(CONFIG.training, "lambda_l1", 100.0)
-        self.lambda_perceptual: float = getattr(CONFIG.training, "lambda_perceptual", 10.0)
-        self.lambda_spectral: float = getattr(CONFIG.training, "lambda_spectral", 5.0)
+        self.lambda_perceptual: float = getattr(CONFIG.training, "lambda_perceptual", 1.0)
+        # Set spectral loss weight to 0.0 initially to prevent color collapse
+        self.lambda_spectral: float = getattr(CONFIG.training, "lambda_spectral", 0.0)
 
         self.gan_loss = nn.BCEWithLogitsLoss()
         self.l1_loss = nn.L1Loss()
@@ -141,30 +145,24 @@ class Pix2PixLoss(nn.Module):
     ) -> Tensor:
         """
         Computes NDVI (Vegetation) and NDWI (Water) consistency penalties
-        using input NIR channel and RGB spectral bands.
-        
-        Input bands: [NIR (B5), SWIR1 (B6), SWIR2 (B7), Thermal (B10)]
-        Target/Generated bands: [Red (B4), Green (B3), Blue (B2)] (or RGB)
+        safely scaled in [0, 1] range.
         """
-        # Extract NIR from input (Channel 0)
-        nir = input_image[:, 0:1, :, :]
+        # Rescale tensors from [-1, 1] to [0, 1] for index math
+        nir = (input_image[:, 0:1, :, :] + 1.0) / 2.0
+        red_gen = (generated_image[:, 0:1, :, :] + 1.0) / 2.0
+        red_tgt = (target_image[:, 0:1, :, :] + 1.0) / 2.0
         
-        # Extract Red from target/generated (Channel 0 of RGB target)
-        red_gen = generated_image[:, 0:1, :, :]
-        red_tgt = target_image[:, 0:1, :, :]
-        
-        # Extract Green from target/generated (Channel 1 of RGB target)
-        green_gen = generated_image[:, 1:2, :, :]
-        green_tgt = target_image[:, 1:2, :, :]
+        green_gen = (generated_image[:, 1:2, :, :] + 1.0) / 2.0
+        green_tgt = (target_image[:, 1:2, :, :] + 1.0) / 2.0
 
-        # Approximate NDVI consistency: (NIR - Red) / (NIR + Red + 1e-6)
-        ndvi_gen = (nir - red_gen) / (torch.abs(nir + red_gen) + 1e-6)
-        ndvi_tgt = (nir - red_tgt) / (torch.abs(nir + red_tgt) + 1e-6)
+        # Compute NDVI safely with epsilon
+        ndvi_gen = (nir - red_gen) / (nir + red_gen + 1e-4)
+        ndvi_tgt = (nir - red_tgt) / (nir + red_tgt + 1e-4)
         ndvi_loss = nn.functional.l1_loss(ndvi_gen, ndvi_tgt)
 
-        # Approximate NDWI consistency using Green vs NIR: (Green - NIR) / (Green + NIR + 1e-6)
-        ndwi_gen = (green_gen - nir) / (torch.abs(green_gen + nir) + 1e-6)
-        ndwi_tgt = (green_tgt - nir) / (torch.abs(green_tgt + nir) + 1e-6)
+        # Compute NDWI safely with epsilon
+        ndwi_gen = (green_gen - nir) / (green_gen + nir + 1e-4)
+        ndwi_tgt = (green_tgt - nir) / (green_tgt + nir + 1e-4)
         ndwi_loss = nn.functional.l1_loss(ndwi_gen, ndwi_tgt)
 
         return ndvi_loss + ndwi_loss
@@ -177,7 +175,7 @@ class Pix2PixLoss(nn.Module):
         target_image: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
-        Compute the generator loss including GAN, L1, Perceptual, and Spectral priors.
+        Compute generator loss.
         """
         device = fake_prediction.device
         if not self._vgg_initialized:
@@ -194,8 +192,11 @@ class Pix2PixLoss(nn.Module):
         else:
             perceptual_loss = torch.tensor(0.0, device=device)
 
-        # Spectral Prior Loss (NDVI & NDWI)
-        spectral_loss = self._compute_spectral_priors(input_image, generated_image, target_image)
+        # Spectral Prior Loss
+        if self.lambda_spectral > 0.0:
+            spectral_loss = self._compute_spectral_priors(input_image, generated_image, target_image)
+        else:
+            spectral_loss = torch.tensor(0.0, device=device)
 
         total_loss = (
             gan_loss 
@@ -230,7 +231,7 @@ class Pix2PixLoss(nn.Module):
         target_image: Tensor,
     ) -> Pix2PixLossOutput:
         """
-        Compute all Pix2Pix losses including advanced hackathon constraints.
+        Compute all Pix2Pix losses.
         """
         generator_loss, gan_loss, l1_loss, perceptual_loss, spectral_loss = self.generator_loss(
             input_image=input_image,

@@ -19,11 +19,7 @@ from colorization.training.trainer import Pix2PixTrainer
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOGGER = logging.getLogger(__name__)
 
-# --- HARDWARE SAFETY SETTINGS ---
-# Set how many epochs you want to train per run.
-# Max epochs suggested for laptop is 20. For testing, run with 2 for two times so you can see whether
-# training continues from the last checkpoint. Once verified, increase to 20 or more.
-EPOCHS_PER_RUN = 10
+EPOCHS_PER_RUN = 1
 CHECKPOINT_PATH = Path("checkpoints/latest_checkpoint.pth")
 
 
@@ -31,19 +27,16 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     LOGGER.info(f"Initializing Local Training on: {device}")
 
-    # 1. Initialize Models & Weights
+    # 1. Initialize Models
     generator = Generator().to(device)
     discriminator = PatchGANDiscriminator().to(device)
-    
-    initialize_weights(generator)
-    initialize_weights(discriminator)
 
     # 2. Initialize Optimizers & AMP Scaler
     gen_opt = optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
     disc_opt = optim.Adam(discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
     scaler = create_grad_scaler()
 
-    # 3. Load Checkpoint (If exists, resume training)
+    # 3. Load Checkpoint or Initialize Fresh Weights
     start_epoch = 1
     if CHECKPOINT_PATH.exists():
         LOGGER.info(f"Found existing checkpoint at {CHECKPOINT_PATH}. Resuming...")
@@ -57,6 +50,10 @@ def main():
             device=device
         )
         start_epoch = checkpoint_data["epoch"] + 1
+    else:
+        LOGGER.info("No checkpoint found. Initializing weights from scratch...")
+        initialize_weights(generator)
+        initialize_weights(discriminator)
 
     target_epoch = start_epoch + EPOCHS_PER_RUN - 1
 
@@ -97,7 +94,6 @@ def main():
                 return  # Exit process safely
 
     LOGGER.info(f"\n✅ Training block complete! Reached Epoch {target_epoch}.")
-    LOGGER.warning("⚠️ HARDWARE SAFETY PAUSE: Let your laptop cool down for 30-45 minutes before running the script again.")
 
 
 if __name__ == "__main__":
