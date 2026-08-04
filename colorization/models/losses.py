@@ -130,11 +130,13 @@ class Pix2PixLoss(nn.Module):
                 pass
 
     @staticmethod
-    def _real_labels(prediction: Tensor) -> Tensor:
-        return torch.ones_like(prediction, device=prediction.device, dtype=prediction.dtype)
+    def _real_labels(prediction: Tensor, smooth: float = 0.9) -> Tensor:
+        """Returns tensor filled with smoothed real label value (default 0.9)."""
+        return torch.full_like(prediction, fill_value=smooth, device=prediction.device, dtype=prediction.dtype)
 
     @staticmethod
     def _fake_labels(prediction: Tensor) -> Tensor:
+        """Returns tensor filled with zeros."""
         return torch.zeros_like(prediction, device=prediction.device, dtype=prediction.dtype)
 
     def _compute_spectral_priors(
@@ -181,7 +183,8 @@ class Pix2PixLoss(nn.Module):
         if not self._vgg_initialized:
             self._init_vgg(device)
 
-        real_labels = self._real_labels(fake_prediction)
+        # Generator targets 1.0 to maximize realism objective
+        real_labels = self._real_labels(fake_prediction, smooth=1.0)
 
         gan_loss = self.gan_loss(fake_prediction, real_labels)
         l1_loss = self.l1_loss(generated_image, target_image)
@@ -212,7 +215,10 @@ class Pix2PixLoss(nn.Module):
         real_prediction: Tensor,
         fake_prediction: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        real_labels = self._real_labels(real_prediction)
+        """
+        Compute discriminator loss with 0.9 one-sided label smoothing on real targets.
+        """
+        real_labels = self._real_labels(real_prediction, smooth=0.9)
         fake_labels = self._fake_labels(fake_prediction)
 
         real_loss = self.gan_loss(real_prediction, real_labels)

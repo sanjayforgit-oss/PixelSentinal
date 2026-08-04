@@ -19,7 +19,7 @@ from colorization.training.trainer import Pix2PixTrainer
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOGGER = logging.getLogger(__name__)
 
-EPOCHS_PER_RUN = 1
+EPOCHS_PER_RUN = 0
 CHECKPOINT_PATH = Path("checkpoints/latest_checkpoint.pth")
 
 
@@ -50,6 +50,10 @@ def main():
             device=device
         )
         start_epoch = checkpoint_data["epoch"] + 1
+
+        for param_group in disc_opt.param_groups:
+            param_group['lr'] = 0.00005
+        LOGGER.info("Successfully updated Discriminator learning rate to 0.00005!")
     else:
         LOGGER.info("No checkpoint found. Initializing weights from scratch...")
         initialize_weights(generator)

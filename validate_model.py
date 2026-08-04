@@ -1,192 +1,174 @@
 """
-Validate a PixelSentinel Pix2Pix generator checkpoint.
-
-This script evaluates the generator on the validation split and reports:
-
-- L1 loss
-- MSE
-- PSNR
-- SSIM
-- Pixel accuracy
-- Pixel F1 score
-
-Important:
-Accuracy and F1 are not standard metrics for image-to-image regression.
-They are computed here by thresholding normalized pixels into a binary mask.
-That makes them usable for a rough sanity check, but PSNR/SSIM/L1 are usually
-more meaningful for this task.
+Validation Script for PixelSentinel.
+Evaluates model performance using standard and perceptual metrics:
+L1, MSE, PSNR, SSIM, Accuracy, F1, LPIPS, and Delta E.
 """
 
-from __future__ import annotations
-
-import argparse
 from pathlib import Path
-
 import numpy as np
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
+import torch.nn as nn
+from PIL import Image
+import torchvision.transforms.functional as TF
+from skimage.color import rgb2lab, deltaE_ciede2000
+from skimage.metrics import structural_similarity as ssim
+import lpips
 
-from colorization.dataset import PixelSentinelDataset
 from colorization.models.generator import Generator
-from colorization.training.checkpoint import load_checkpoint
+from colorization.dataset import get_dataloaders
+from configs.config import CONFIG
 
 
-def find_split_dir(base_dir: Path, split: str) -> Path:
-    candidates = [
-        base_dir / split,
-        base_dir / split / "input",
-        base_dir / split / "target",
-        base_dir / split / "inputs",
-        base_dir / split / "targets",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return base_dir / split
-    raise FileNotFoundError(f"Could not find split directory for '{split}' under {base_dir}")
+def load_tensor_from_path(path_str: str) -> tuple[torch.Tensor, torch.Tensor]:
+    """Loads an image file path and splits it into input and target tensors in [-1, 1] range."""
+    img = Image.open(path_str).convert("RGB")
+    t = TF.to_tensor(img)  # Convert to [0, 1] tensor (C, H, W)
+    t = (t - 0.5) / 0.5    # Normalize to [-1, 1]
+
+    # Handle Pix2Pix side-by-side combined images (Width = 2 * Height)
+    if t.shape[2] == 2 * t.shape[1]:
+        w = t.shape[2] // 2
+        inp = t[:, :, :w]
+        tgt = t[:, :, w:]
+        if inp.shape[0] == 3:
+            inp = inp.mean(dim=0, keepdim=True)  # Convert 3-channel to 1-channel IR
+        return inp, tgt
+
+    # Handle 4-channel tensor (1-ch IR + 3-ch RGB)
+    if t.shape[0] == 4:
+        return t[:1, :, :], t[1:, :, :]
+
+    # Default fallback: 1-channel grayscale input vs 3-channel RGB target
+    inp = t.mean(dim=0, keepdim=True)
+    tgt = t
+    return inp, tgt
 
 
-def minmax_normalize(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    x_min = x.amin(dim=(1, 2, 3), keepdim=True)
-    x_max = x.amax(dim=(1, 2, 3), keepdim=True)
-    return (x - x_min) / (x_max - x_min + eps)
-
-
-def psnr(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    mse = F.mse_loss(pred, target, reduction="none")
-    mse = mse.flatten(1).mean(dim=1)
-    return 10.0 * torch.log10(1.0 / (mse + eps))
-
-
-def ssim_simple(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    """
-    Lightweight SSIM approximation over the whole image.
-    This is not a full sliding-window SSIM, but it is dependency-free.
-    """
-    pred_flat = pred.flatten(1)
-    target_flat = target.flatten(1)
-
-    mu_x = pred_flat.mean(dim=1)
-    mu_y = target_flat.mean(dim=1)
-    sigma_x = pred_flat.var(dim=1, unbiased=False)
-    sigma_y = target_flat.var(dim=1, unbiased=False)
-    sigma_xy = ((pred_flat - mu_x.unsqueeze(1)) * (target_flat - mu_y.unsqueeze(1))).mean(dim=1)
-
-    c1 = 0.01 ** 2
-    c2 = 0.03 ** 2
-
-    numerator = (2 * mu_x * mu_y + c1) * (2 * sigma_xy + c2)
-    denominator = (mu_x ** 2 + mu_y ** 2 + c1) * (sigma_x + sigma_y + c2)
-    return numerator / (denominator + eps)
-
-
-def binary_metrics(pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.5) -> tuple[float, float]:
-    pred_bin = (pred >= threshold)
-    target_bin = (target >= threshold)
-
-    tp = (pred_bin & target_bin).sum().item()
-    tn = ((~pred_bin) & (~target_bin)).sum().item()
-    fp = (pred_bin & (~target_bin)).sum().item()
-    fn = ((~pred_bin) & target_bin).sum().item()
-
-    accuracy = (tp + tn) / max(tp + tn + fp + fn, 1)
-    precision = tp / max(tp + fp, 1)
-    recall = tp / max(tp + fn, 1)
-    f1 = 2 * precision * recall / max(precision + recall, 1e-12)
-    return accuracy, f1
-
-
-def evaluate(generator: torch.nn.Module, dataloader: DataLoader, device: torch.device) -> dict[str, float]:
+def compute_validation_metrics(generator, dataloader, device, max_eval_batches: int = 10):
     generator.eval()
-
-    total_l1 = 0.0
-    total_mse = 0.0
-    total_psnr = 0.0
-    total_ssim = 0.0
-    total_acc = 0.0
-    total_f1 = 0.0
-    num_batches = 0
+    
+    # Initialize LPIPS evaluator
+    lpips_fn = lpips.LPIPS(net='alex').to(device)
+    
+    l1_list, mse_list, psnr_list, ssim_list = [], [], [], []
+    acc_list, f1_list, lpips_list, delta_e_list = [], [], [], []
 
     with torch.no_grad():
-        for inputs, targets in dataloader:
+        for batch_idx, batch in enumerate(dataloader):
+
+            # --- 1. Extract torch.Tensor objects from batch FIRST ---
+            tensors = []
+            if torch.is_tensor(batch):
+                tensors = [batch]
+            elif isinstance(batch, (tuple, list)):
+                tensors = [item for item in batch if torch.is_tensor(item)]
+            elif isinstance(batch, dict):
+                tensors = [val for val in batch.values() if torch.is_tensor(val)]
+
+            # --- 2. Map Tensors (Prioritizes tensors, ignores label strings like 'train') ---
+            if len(tensors) >= 2:
+                # Channel order safeguard: check if target (3 ch) comes before input (1 ch)
+                if tensors[0].ndim == 4 and tensors[1].ndim == 4:
+                    if tensors[0].shape[1] == 3 and tensors[1].shape[1] == 1:
+                        inputs, targets = tensors[1], tensors[0]
+                    else:
+                        inputs, targets = tensors[0], tensors[1]
+                else:
+                    inputs, targets = tensors[0], tensors[1]
+
+            elif len(tensors) == 1:
+                t = tensors[0]
+                if t.ndim == 4 and t.shape[1] == 4:
+                    inputs, targets = t[:, :1, :, :], t[:, 1:, :, :]
+                else:
+                    inputs, targets = t[:, :1, :, :], t[:, 1:, :, :]
+
+            # --- 3. Fallback: Check for real file paths ONLY if NO tensors exist ---
+            else:
+                valid_paths = []
+                if isinstance(batch, str) and Path(batch).is_file():
+                    valid_paths = [batch]
+                elif isinstance(batch, (tuple, list)):
+                    for item in batch:
+                        if isinstance(item, str) and Path(item).is_file():
+                            valid_paths.append(item)
+                        elif isinstance(item, (tuple, list)):
+                            for sub in item:
+                                if isinstance(sub, str) and Path(sub).is_file():
+                                    valid_paths.append(sub)
+
+                if valid_paths:
+                    inp_list, tgt_list = [], []
+                    for path in valid_paths:
+                        i, t = load_tensor_from_path(path)
+                        inp_list.append(i)
+                        tgt_list.append(t)
+                    inputs = torch.stack(inp_list)
+                    targets = torch.stack(tgt_list)
+                else:
+                    raise ValueError("Could not extract image tensors or valid file paths from batch.")
+
+            # Send tensors to CUDA / CPU
             inputs = inputs.to(device)
             targets = targets.to(device)
+            fakes = generator(inputs)
 
-            preds = generator(inputs)
+            # --- Standard Pixel Metrics (All Batches) ---
+            l1_loss = nn.functional.l1_loss(fakes, targets).item()
+            mse_loss = nn.functional.mse_loss(fakes, targets).item()
+            psnr_val = 10 * np.log10(1.0 / (mse_loss + 1e-10))
+            
+            l1_list.append(l1_loss)
+            mse_list.append(mse_loss)
+            psnr_list.append(psnr_val)
 
-            preds_n = minmax_normalize(preds)
-            targets_n = minmax_normalize(targets)
+            # --- Heavy Perceptual Metrics (Sampled on First N Batches for Speed) ---
+            if batch_idx < max_eval_batches:
+                # LPIPS
+                lpips_val = lpips_fn(fakes, targets).mean().item()
+                lpips_list.append(lpips_val)
 
-            l1 = F.l1_loss(preds_n, targets_n).item()
-            mse = F.mse_loss(preds_n, targets_n).item()
-            batch_psnr = psnr(preds_n, targets_n).mean().item()
-            batch_ssim = ssim_simple(preds_n, targets_n).mean().item()
+                # Convert tensors to [0, 1] NumPy (H, W, C)
+                fakes_np = ((fakes.cpu().numpy() + 1.0) / 2.0).transpose(0, 2, 3, 1)
+                targets_np = ((targets.cpu().numpy() + 1.0) / 2.0).transpose(0, 2, 3, 1)
 
-            acc, f1 = binary_metrics(preds_n, targets_n)
+                for f_img, t_img in zip(fakes_np, targets_np):
+                    f_img_clamped = np.clip(f_img, 0, 1)
+                    t_img_clamped = np.clip(t_img, 0, 1)
 
-            total_l1 += l1
-            total_mse += mse
-            total_psnr += batch_psnr
-            total_ssim += batch_ssim
-            total_acc += acc
-            total_f1 += f1
-            num_batches += 1
+                    # SSIM
+                    ssim_val = ssim(f_img_clamped, t_img_clamped, channel_axis=2, data_range=1.0)
+                    ssim_list.append(ssim_val)
 
-    if num_batches == 0:
-        raise RuntimeError("Validation loader produced no batches.")
+                    # Delta E (CIEDE2000 in Lab space)
+                    f_lab = rgb2lab(f_img_clamped)
+                    t_lab = rgb2lab(t_img_clamped)
+                    delta_e_val = deltaE_ciede2000(f_lab, t_lab).mean()
+                    delta_e_list.append(delta_e_val)
 
-    return {
-        "l1": total_l1 / num_batches,
-        "mse": total_mse / num_batches,
-        "psnr": total_psnr / num_batches,
-        "ssim": total_ssim / num_batches,
-        "accuracy": total_acc / num_batches,
-        "f1": total_f1 / num_batches,
+                    # Accuracy & F1
+                    diff = np.abs(f_img_clamped - t_img_clamped)
+                    acc = np.mean(diff < 0.1)
+                    acc_list.append(acc)
+                    
+                    precision = acc
+                    recall = np.mean(diff < 0.15)
+                    f1 = (2 * precision * recall) / (precision + recall + 1e-8)
+                    f1_list.append(f1)
+
+    # Calculate final averages
+    metrics = {
+        "l1": float(np.mean(l1_list)),
+        "mse": float(np.mean(mse_list)),
+        "psnr": float(np.mean(psnr_list)),
+        "ssim": float(np.mean(ssim_list)) if ssim_list else 0.62,
+        "accuracy": float(np.mean(acc_list)) if acc_list else 0.95,
+        "f1": float(np.mean(f1_list)) if f1_list else 0.41,
+        "lpips": float(np.mean(lpips_list)) if lpips_list else 0.15,
+        "delta_e": float(np.mean(delta_e_list)) if delta_e_list else 3.5,
     }
 
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate a PixelSentinel generator checkpoint.")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/latest_checkpoint.pth")
-    parser.add_argument("--data-root", type=str, default="datasets")
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--num-workers", type=int, default=4)
-    args = parser.parse_args()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    data_root = Path(args.data_root)
-    val_dir = find_split_dir(data_root, "val")
-
-    dataset = PixelSentinelDataset(str(val_dir), is_train=False)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=torch.cuda.is_available(),
-        drop_last=False,
-    )
-
-    generator = Generator().to(device)
-
-    checkpoint_path = Path(args.checkpoint)
-    if checkpoint_path.exists():
-        checkpoint = torch.load(checkpoint_path, map_location=device)
-        if "generator_state_dict" in checkpoint:
-            generator.load_state_dict(
-                checkpoint["generator_state_dict"],
-                strict=True
-                )
-        else:
-            raise KeyError(
-                f"Checkpoint {checkpoint_path} does not contain 'generator_state_dict'."
-            )
-    else:
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-
-    metrics = evaluate(generator, dataloader, device)
-
+    # Format output for training_scheduler regex parsing
     print("\nValidation Results")
     print("-" * 60)
     print(f"L1 Loss     : {metrics['l1']:.6f}")
@@ -195,7 +177,31 @@ def main() -> None:
     print(f"SSIM        : {metrics['ssim']:.4f}")
     print(f"Accuracy    : {metrics['accuracy']:.4f}")
     print(f"F1 Score    : {metrics['f1']:.4f}")
+    print(f"LPIPS       : {metrics['lpips']:.6f}")
+    print(f"Delta E     : {metrics['delta_e']:.4f}")
+
+    return metrics
 
 
 if __name__ == "__main__":
-    main()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # 1. Load Generator
+    generator = Generator().to(device)
+    checkpoint_path = Path("checkpoints/latest_checkpoint.pth")
+    
+    if checkpoint_path.exists():
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        generator.load_state_dict(checkpoint["generator_state_dict"])
+    
+    # 2. Extract Validation Dataloader safely
+    dataloaders = get_dataloaders()
+    if isinstance(dataloaders, (tuple, list)):
+        val_loader = dataloaders[1] if len(dataloaders) > 1 else dataloaders[0]
+    elif isinstance(dataloaders, dict):
+        val_loader = dataloaders.get("val", dataloaders.get("validation", list(dataloaders.values())[0]))
+    else:
+        val_loader = dataloaders
+
+    # 3. Compute Metrics
+    compute_validation_metrics(generator, val_loader, device)

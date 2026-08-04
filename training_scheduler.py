@@ -71,6 +71,8 @@ def extract_validation_metrics(output: str) -> dict[str, float]:
         "ssim": r"SSIM\s*:\s*([0-9.]+)",
         "accuracy": r"Accuracy\s*:\s*([0-9.]+)",
         "f1": r"F1 Score\s*:\s*([0-9.]+)",
+        "lpips": r"LPIPS\s*:\s*([0-9.]+)",
+        "delta_e": r"Delta E\s*:\s*([0-9.]+)",
     }
 
     metrics: dict[str, float] = {}
@@ -82,27 +84,34 @@ def extract_validation_metrics(output: str) -> dict[str, float]:
     return metrics
 
 
-def append_validation_row(row: dict[str, Any]) -> None:
+def append_validation_row(csv_path, rowdict):
+    # 1. Include 'validation_run' in fieldnames
     fieldnames = [
-        "timestamp",
         "iteration",
         "validation_run",
         "checkpoint_epoch",
-        "checkpoint_path",
+        "timestamp",
         "l1",
         "mse",
         "psnr",
         "ssim",
         "accuracy",
         "f1",
+        "lpips",
+        "delta_e"
     ]
-
-    file_exists = VALIDATION_CSV.exists()
-    with VALIDATION_CSV.open("a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
+    
+    file_exists = Path(csv_path).exists()
+    
+    with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
+        # 2. Add extrasaction='ignore' so it never crashes on extra keys
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+        
+        # Write header if file is newly created
+        if not file_exists or Path(csv_path).stat().st_size == 0:
             writer.writeheader()
-        writer.writerow(row)
+            
+        writer.writerow(rowdict)
 
 
 def get_last_completed_epoch() -> int:
@@ -116,21 +125,24 @@ def get_last_completed_epoch() -> int:
     return epoch
 
 
-def validate_and_log(iteration: int, validation_run: int, checkpoint_epoch: int) -> None:
+def validate_and_log(iteration, validation_run, checkpoint_epoch):
     output = run_command([sys.executable, "validate_model.py"])
     print(output)
-
-    metrics = extract_validation_metrics(output)
-    append_validation_row(
-        {
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "iteration": iteration,
-            "validation_run": validation_run,
-            "checkpoint_epoch": checkpoint_epoch,
-            "checkpoint_path": str(CHECKPOINT_PATH),
-            **metrics,
-        }
-    )
+    # 1. Run validate_model.py and parse metrics output
+    metrics = extract_validation_metrics(output)  # or regex extraction logic
+    
+    # 2. Build complete row dictionary
+    row_data = {
+        "iteration": iteration,
+        "validation_run": validation_run,
+        "checkpoint_epoch": checkpoint_epoch,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        **metrics  # unpacked l1, mse, psnr, ssim, accuracy, f1, lpips, delta_e
+    }
+    
+    # 3. Call with BOTH arguments (csv_path AND row_data)
+    
+    append_validation_row(VALIDATION_CSV, row_data)
 
 
 def main() -> None:
