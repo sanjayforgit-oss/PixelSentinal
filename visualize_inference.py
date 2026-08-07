@@ -36,7 +36,7 @@ def denormalize(tensor: torch.Tensor) -> np.ndarray:
 
 def main() -> None:
     # Configuration paths & settings
-    checkpoint_path = Path("checkpoints/latest_checkpoint.pth")
+    checkpoint_path = Path("checkpoints/latest_checkpoint.pth")# - 40epoch #checkpoints/latest_checkpoint.pth - 65 epoch
     data_root = Path("datasets")
     
     # Locate validation or test split

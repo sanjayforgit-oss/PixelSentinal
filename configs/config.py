@@ -140,13 +140,23 @@ class TrainingConfig:
 
     batch_size: int = 8
 
+    # Learning Rates (TTUR Enabled)
     learning_rate: float = 2e-4
+    learning_rate_g: float = 2e-4
+    learning_rate_d: float = 5e-5
 
     beta1: float = 0.5
 
     beta2: float = 0.999
 
+    # Loss Term Weights
     lambda_l1: float = 100.0
+
+    lambda_tv: float = 10.0  # Total Variation Loss weight for grid suppression
+
+    lambda_perceptual: float = 1.0
+
+    lambda_spectral: float = 0.0
 
     num_workers: int = 4
 
@@ -159,9 +169,6 @@ class TrainingConfig:
     save_every: int = 5
 
     random_seed: int = 42
-    lambda_l1: float = 100.0
-    lambda_perceptual: float = 1.0
-    lambda_spectral: float = 0.0
 
 
 # ==============================================================================

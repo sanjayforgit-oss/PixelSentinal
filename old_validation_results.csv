@@ -1,0 +1,7 @@
+timestamp,iteration,validation_run,checkpoint_epoch,checkpoint_path,l1,mse,psnr,ssim,accuracy,f1
+2026-07-28T02:09:53,1,1,71,D:\pixelsentinel\checkpoints\latest_checkpoint.pth,0.112166,0.028498,22.1583,0.6935,0.9715,0.5733
+2026-07-28T02:18:27,2,1,72,D:\pixelsentinel\checkpoints\latest_checkpoint.pth,0.129593,0.042344,21.6058,0.699,0.91,0.3759
+2026-08-02T05:26:08,1,1,20,D:\pixelsentinel\checkpoints\latest_checkpoint.pth,0.150004,0.058947,18.732,0.6156,0.7816,0.227
+2026-08-02T08:10:09,2,1,30,D:\pixelsentinel\checkpoints\latest_checkpoint.pth,0.14681,0.055403,19.0564,0.6244,0.7818,0.2314
+2026-08-02T10:54:51,3,1,40,D:\pixelsentinel\checkpoints\latest_checkpoint.pth,0.139815,0.049159,19.0898,0.6233,0.9561,0.4106
+2026-08-02T15:38:48,1,1,50,D:\pixelsentinel\checkpoints\latest_checkpoint.pth,0.166441,0.073741,15.3169,0.4301,0.7542,0.1887

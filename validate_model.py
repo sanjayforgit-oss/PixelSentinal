@@ -188,7 +188,7 @@ if __name__ == "__main__":
     
     # 1. Load Generator
     generator = Generator().to(device)
-    checkpoint_path = Path("checkpoints/latest_checkpoint.pth")
+    checkpoint_path = Path("C:/Users/sanja/Desktop/latest_checkpoint.pth")# epoch 40
     
     if checkpoint_path.exists():
         checkpoint = torch.load(checkpoint_path, map_location=device)
